@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="Pool! — a pocket pool game with real ball and spin physics and endless seeded tours.">
+  <meta name="description" content="Pool! — solo pocket pool with real ball and spin physics. Clear the table in as few shots as you can.">
   <title>Pool!</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -22,30 +22,26 @@
 
     <div id="hud">
       <div id="hud-top">
-        <div class="panel" id="rack-panel">
-          <div class="big" id="rack-title">Rack 1</div>
-          <div class="small" id="rack-sub">Par 8 · 6 balls</div>
-        </div>
         <div class="panel" id="score-panel">
-          <div class="big" id="stroke-label">Shot 1</div>
-          <div class="small" id="score-label">E</div>
+          <div class="big" id="shots-label">Shot 1</div>
+          <div class="small" id="fouls-label">No fouls</div>
         </div>
-        <div class="panel" id="twist-panel">
-          <canvas id="twist-canvas"></canvas>
-          <div class="small" id="twist-label">—</div>
+        <div class="panel" id="tray-panel">
+          <div class="big" id="left-label">15 left</div>
+          <div id="tray"></div>
         </div>
       </div>
-      <div id="info-strip"><span id="status-label">Ball in hand</span><span class="dot">·</span><span id="tray"></span></div>
       <div id="notify" aria-live="polite"></div>
     </div>
 
     <div id="side-buttons">
       <button class="icon-btn" id="btn-quick" aria-label="Menu" aria-expanded="false">☰</button>
       <button class="icon-btn" id="btn-zoom" aria-label="Zoom">🔍</button>
+      <button class="icon-btn" id="btn-style-side" aria-label="Table style">🎨</button>
     </div>
     <div id="quick-menu" class="hidden" role="menu">
-      <button role="menuitem" id="btn-card">▦ Scorecard</button>
-      <button role="menuitem" id="btn-rules">📜 Rack rules</button>
+      <button role="menuitem" id="btn-new">↻ New game</button>
+      <button role="menuitem" id="btn-style">🎨 Table style</button>
       <button role="menuitem" id="btn-sound">🔊 Sound effects</button>
       <button role="menuitem" id="btn-music">♫ Music</button>
       <button role="menuitem" id="btn-next-track">⏭ Next track</button>
@@ -54,22 +50,31 @@
 
     <div id="toast"></div>
 
-    <div id="controls">
-      <div id="spin-row" role="radiogroup" aria-label="Spin"></div>
-      <div id="aim-row">
-        <button class="aim-btn" id="aim-left" aria-label="Aim left">⟲</button>
-        <div id="spin-picker">
-          <canvas id="spin-canvas" aria-label="Cue tip position: drag to set spin"></canvas>
-          <div id="spin-name"><span id="spin-title">Centre ball</span><small id="spin-info">miscue 0%</small></div>
-        </div>
-        <button class="aim-btn" id="aim-right" aria-label="Aim right">⟳</button>
-      </div>
-      <button id="shoot-btn">HOLD TO SHOOT</button>
-      <!-- While striking, the whole control area (and a margin above it) acts as the shoot button. -->
-      <div id="swing-zone" aria-hidden="true"></div>
+    <!-- Floating spin window: drag the pointer to where the cue tip should strike. -->
+    <div id="spin-window" class="hidden" role="dialog" aria-label="Spin">
+      <div class="spin-head"><b>Spin</b><span id="spin-desc">Centre ball</span><button id="spin-close" aria-label="Close">✕</button></div>
+      <canvas id="spin-big" aria-label="Cue tip position: drag to set spin"></canvas>
+      <button class="secondary" id="spin-reset">Centre ball</button>
     </div>
 
-    <div id="loading" class="overlay hidden"><div class="spinner"></div><div id="loading-text">Racking up…</div></div>
+    <div id="controls">
+      <div id="power-row" class="panel">
+        <div id="power-head"><span>Strength</span><b id="power-value">40%</b><small id="power-speed">2.1 m/s</small></div>
+        <div id="power-track" role="slider" aria-label="Shot strength" aria-valuemin="0" aria-valuemax="100" tabindex="0">
+          <div id="power-fill"></div>
+          <div id="power-ticks"><i></i><i></i><i></i></div>
+          <div id="power-thumb"></div>
+        </div>
+      </div>
+      <div id="shot-row">
+        <button class="aim-btn" id="aim-left" aria-label="Aim left">⟲</button>
+        <button id="spin-btn" aria-label="Spin"><canvas id="spin-small"></canvas><span>Spin</span></button>
+        <button id="shoot-btn">SHOOT</button>
+        <button class="aim-btn" id="aim-right" aria-label="Aim right">⟳</button>
+      </div>
+    </div>
+
+    <div id="loading" class="overlay hidden"><div class="spinner"></div><div id="loading-text">Setting up the table…</div></div>
 
     <div id="menu" class="overlay">
       <div class="card">
@@ -112,20 +117,12 @@
               <path d="M359 116.5 a18 8 0 0 0 36 0" fill="none" stroke="#c9a45a" stroke-opacity="0.7" stroke-width="3"/>
           </svg>
         </h1>
-        <p class="tag">Pocket pool · endless tours</p>
-        <div id="continue-wrap" class="hidden">
-          <button class="primary" id="btn-continue">Continue tour</button>
-          <p class="small muted" id="continue-info"></p>
-        </div>
-        <label class="field">Tour seed
-          <div class="seed-row">
-            <input id="seed-input" type="text" inputmode="text" autocomplete="off" spellcheck="false" maxlength="24">
-            <button id="btn-dice" aria-label="Random seed">🎲</button>
-          </div>
-        </label>
-        <p class="course-name" id="tour-preview"></p>
-        <button class="primary" id="btn-play">Break!</button>
-        <button class="secondary" id="btn-records">🏆 Best &amp; worst tours</button>
+        <p class="tag">Solo pocket pool · clear the table</p>
+        <button class="primary hidden" id="btn-continue">Continue game</button>
+        <p class="small muted hidden" id="continue-info"></p>
+        <button class="primary" id="btn-play">New game</button>
+        <button class="secondary" id="btn-style-menu">🎨 Table style</button>
+        <p class="best" id="best-label"></p>
         <div id="install-wrap">
           <button class="secondary hidden" id="btn-install">📲 Install app (plays offline)</button>
           <p class="small muted hidden" id="install-ios">To install on iPhone: tap <b>Share</b> → <b>Add to Home Screen</b>. It then works offline.</p>
@@ -134,51 +131,50 @@
         <details>
           <summary>How to play</summary>
           <ul>
-            <li><b>Goal:</b> clear every rack in as few shots as you can. Each rack has a par, like a golf hole; nine racks make a tour.</li>
-            <li><b>Ball in hand:</b> every rack starts with the cue ball in your hand — drag to place it (behind the head string for a break, anywhere on an open table), then tap <b>PLACE</b>.</li>
-            <li><b>Aim:</b> drag anywhere on the table. ⟲ ⟳ fine-tune (hold to repeat). Each turn the cue starts lined up on the easiest pot it can see.</li>
-            <li><b>Guide:</b> the ring is the ghost ball (where the cue ball will touch). The object ball's line turns <span class="ok-chip">green</span> when it's heading for a pocket, red if that ball isn't legal to hit first. The blue line is where the cue ball goes after contact, bent by follow or draw.</li>
-            <li><b>Spin:</b> drag the tip on the little cue ball or pick Follow, Draw, Stun or side. Follow rolls through, draw screws back, stun stops dead on a straight shot, side spin bends the bounce off a cushion.</li>
-            <li><b>Side spin isn't free:</b> it pushes the cue ball slightly the other way (squirt), and the further from centre you hit, the bigger the risk of a miscue — shown under the picker.</li>
-            <li><b>Stroke:</b> hold the button to draw the cue back, release to set the pace, then tap again as the marker crosses the white line. Early pushes the shot right, late pulls it left.</li>
-            <li>The <span class="pin-chip">pot</span> mark on the meter is the slowest pace that still drops the ball you're aiming at. Go a touch firmer — but not much, or it'll rattle.</li>
-            <li><b>Throw:</b> on cut shots the object ball is dragged a little towards the cue ball's path (and by side spin). The guide doesn't show it — allow for it on thin cuts.</li>
-            <li><b>Fouls (+1):</b> scratching (cue ball in a pocket — then it's ball in hand anywhere), missing every ball, or hitting the wrong ball first in rotation racks.</li>
-            <li><b>Racks:</b> Six-pack (any order), Open table (spread balls, any order), Rotation (lowest ball first), Nine-ball (lowest first; a legal 9 clears the rack early!) and Eight-ball (15 balls, the 8 last — sink it early for +2).</li>
-            <li><b>Venues:</b> each seed plays in one — pub, tournament hall (fast cloth, tight pockets), casino (a lucky ★ pocket: −1 shot), saloon (dead cushions, and the table leans!), space station (low gravity) or beach bar (sand on the cloth slows the balls). 🎲 picks another.</li>
-            <li>Hold the button while the balls run to fast-forward. Pinch, scroll or 🔍 to zoom.</li>
-            <li><b>Menu (☰):</b> scorecard, rack rules, sound effects, music, next track and the main menu.</li>
-            <li>Desktop: mouse to aim, click/space to shoot, ←/→ fine aim, W/S follow/draw, A/D side, X centre, Enter to place, Z zoom, C scorecard, M mute, N next track.</li>
+            <li><b>Goal:</b> pot all 15 balls, in any order, in as few shots as you can.</li>
+            <li><b>The break:</b> you start with the cue ball in hand behind the line. Drag it where you like, then tap <b>PLACE</b>.</li>
+            <li><b>Aim:</b> drag anywhere on the table. ⟲ ⟳ nudge the aim a hair at a time (hold to repeat).</li>
+            <li><b>Strength:</b> drag the strength bar, then tap <b>SHOOT</b>. What you set is exactly what you get — no timing, no luck.</li>
+            <li><b>Spin (optional):</b> tap the little cue ball to open the spin window and drag the pointer to where the tip should strike: high for follow, low for draw, left or right for side. Side spin changes how the ball comes off a cushion.</li>
+            <li><b>Guide:</b> the ring is the ghost ball (where the cue ball touches). The object ball's line turns <span class="ok-chip">green</span> when it's heading for a pocket; the blue line is where the cue ball goes after contact. Cut shots throw the object ball slightly, so allow a hair on thin cuts.</li>
+            <li><b>Fouls:</b> potting the cue ball (scratch) or missing every ball adds a foul. After a scratch the cue ball is in hand anywhere. Your score is shots + fouls.</li>
+            <li>Pinch, scroll or 🔍 to zoom. Hold <b>SHOOT</b> while the balls run to fast-forward. 🎨 changes the cloth, rails and room.</li>
+            <li>Desktop: mouse to aim, ←/→ fine aim (Shift for bigger steps), ↑/↓ strength, Space or Enter to shoot/place, S spin window, Z zoom, M mute, N next track.</li>
           </ul>
         </details>
       </div>
     </div>
 
-    <div id="scorecard" class="overlay hidden">
+    <div id="style" class="overlay hidden">
       <div class="card wide">
-        <h2 id="sc-title">Scorecard</h2>
-        <p class="course-name" id="sc-tour"></p>
-        <div id="sc-result"></div>
-        <div class="table-wrap"><table id="sc-table" class="sc-table"></table></div>
-        <div class="btn-row" id="sc-buttons"></div>
+        <h2>Table style</h2>
+        <canvas id="style-preview"></canvas>
+        <h3>Cloth</h3>
+        <div class="swatches" id="cloth-options"></div>
+        <h3>Rails</h3>
+        <div class="swatches" id="rail-options"></div>
+        <h3>Room</h3>
+        <div class="chips" id="room-options"></div>
+        <h3>Aim guide</h3>
+        <div class="seg" id="guide-options"></div>
+        <button class="primary" id="btn-style-done">Done</button>
       </div>
     </div>
 
-    <div id="records" class="overlay hidden">
-      <div class="card wide">
-        <h2>Your tours</h2>
-        <div id="records-body"></div>
-        <button class="secondary" id="btn-records-close">Close</button>
+    <div id="result" class="overlay hidden">
+      <div class="card">
+        <h2 id="result-title">Table cleared!</h2>
+        <div id="result-body"></div>
+        <button class="primary" id="btn-again">New game</button>
+        <button class="secondary" id="btn-result-menu">Main menu</button>
       </div>
     </div>
   </div>
 
   <script src="js/util.js"></script>
-  <script src="js/worlds.js"></script>
+  <script src="js/themes.js"></script>
   <script src="js/table.js"></script>
   <script src="js/physics.js"></script>
-  <script src="js/rules.js"></script>
-  <script src="js/ai.js"></script>
   <script src="js/render.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/music.js"></script>

@@ -1,6 +1,6 @@
 // Ball physics: sliding and rolling friction with full spin (follow, draw, stun and side), ball–ball
 // collisions with cut- and spin-induced throw, cushions that take and give side spin, pocket jaws and
-// capture, table lean and sand.  Pure functions on plain objects, so it runs headless in tests.
+// capture.  Deterministic: the same stroke always plays the same way.  Pure functions on plain objects, so it runs headless in tests.
 //
 // Frame: x right, y down the table, z into the cloth (right-handed).  The contact point with the cloth is
 // r = (0, 0, R); a ball rolls without slipping when vx = −R·wy and vy = R·wx.
@@ -11,10 +11,9 @@
   const G = 9.81;
   const MAX_SPEED = 8.6; // m/s, a big break
   const MIN_SPEED = 0.1;
-  const SQUIRT = 0.034; // radians of cue-ball deflection at full side (tip offset 1 R)
   const BALL_E = 0.94; // ball–ball restitution
   const BALL_MU = 0.04; // ball–ball friction (throw)
-  const MAX_TIP = 0.6; // tip offset limit (fraction of R) before a guaranteed miscue
+  const MAX_TIP = 0.6; // furthest the tip may strike from centre (fraction of R)
 
   function createBall(n, x, y, rng) {
     const b = { n, x, y, vx: 0, vy: 0, wx: 0, wy: 0, wz: 0, moving: false, pocketed: false, pocket: -1, sinkT: 0, rot: [1, 0, 0, 0, 1, 0, 0, 0, 1] };
@@ -54,14 +53,13 @@
     m[8] = m[0] * m[4] - m[3] * m[1];
   }
 
-  // Cue speed for a meter power (0–1).  Slightly progressive so soft touch shots get more of the meter.
+  // Cue speed for a power setting (0–1).  Progressive, so soft touch shots get more of the meter.
   const speedFor = (p) => MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.pow(clamp(p, 0, 1), 1.45);
   const powerFor = (v) => Math.pow(clamp((v - MIN_SPEED) / (MAX_SPEED - MIN_SPEED), 0, 1), 1 / 1.45);
 
   // Strike the cue ball.  a: side (+ = right of centre), b: height (+ = above centre), both in units of R.
   function strike(ball, angle, speed, a, b) {
-    const ang = angle - a * SQUIRT; // squirt: side spin pushes the cue ball slightly the other way
-    const dx = Math.cos(ang), dy = Math.sin(ang);
+    const dx = Math.cos(angle), dy = Math.sin(angle);
     ball.vx = dx * speed;
     ball.vy = dy * speed;
     const k = (5 * speed) / (2 * R);
@@ -98,34 +96,30 @@
     const g = G * (env.gravity ?? 1);
     const slideMu = env.slide, rollMu = env.roll;
     const spinDec = (env.spinDecay ?? 9) * (env.gravity ?? 1);
-    const tilt = table.tilt;
     for (const b of balls) {
       if (b.pocketed || !b.moving) continue;
-      const sandK = table.sand.length ? table.sandAt(b.x, b.y) : 0;
       const ux = b.vx + R * b.wy, uy = b.vy - R * b.wx;
       const slip = Math.hypot(ux, uy);
       if (slip > 1e-4) {
         // Sliding: kinetic friction slows the slip at 7/2·μg until the ball rolls.
-        const a = slideMu * g * (1 + sandK * 0.3);
+        const a = slideMu * g;
         const f = Math.min(1, slip / (3.5 * a * h));
         const fx = (-a * ux) / slip, fy = (-a * uy) / slip;
         b.vx += fx * h * f;
         b.vy += fy * h * f;
         b.wx += ((-5 / (2 * R)) * fy) * h * f;
         b.wy += ((5 / (2 * R)) * fx) * h * f;
-        if (tilt) { b.vx += g * tilt.x * h; b.vy += g * tilt.y * h; }
       } else {
-        // Rolling: rolling resistance (and the table's lean, at 5/7 g for a rolling sphere).
-        if (tilt) { b.vx += (5 / 7) * g * tilt.x * h; b.vy += (5 / 7) * g * tilt.y * h; }
+        // Rolling: rolling resistance.
         const sp = Math.hypot(b.vx, b.vy);
-        const dec = rollMu * g * (1 + sandK) * h;
+        const dec = rollMu * g * h;
         if (sp <= dec) { b.vx = 0; b.vy = 0; } else { const k = (sp - dec) / sp; b.vx *= k; b.vy *= k; }
         b.wx = b.vy / R;
         b.wy = -b.vx / R;
       }
       // Spin about the vertical axis decays through the contact patch.
       if (b.wz !== 0) {
-        const d = spinDec * h * (1 + sandK);
+        const d = spinDec * h;
         b.wz = Math.abs(b.wz) <= d ? 0 : b.wz - Math.sign(b.wz) * d;
       }
       b.x += b.vx * h;
@@ -337,29 +331,8 @@
     return res;
   }
 
-  // Lowest meter power that drops `target` (n) in `pocketId` with this aim and spin, or null.  Used for
-  // the red pace mark on the meter: it's the dying pace; a touch firmer is safer.
-  function potPower(table, env, balls, cueN, target, pocketId, angle, a, b) {
-    const subset = balls.filter((x) => x.n === cueN || x.n === target);
-    const run = (p) => {
-      const r = simulateShot(table, env, subset, { angle, power: p, a, b }, {
-        maxT: 25, dt: 1 / 90,
-        until: (res, sim) => res.pocketed.some((q) => q.n === target) || (res.first != null && !sim.balls.find((x) => x.n === target).moving),
-      });
-      const q = r.pocketed.find((x) => x.n === target);
-      return q ? (q.pocket === pocketId ? 1 : -1) : 0;
-    };
-    if (run(1) !== 1 && run(0.6) !== 1) return null;
-    let lo = 0, hi = run(0.6) === 1 ? 0.6 : 1;
-    for (let i = 0; i < 9; i++) {
-      const mid = (lo + hi) / 2;
-      if (run(mid) === 1) hi = mid; else lo = mid;
-    }
-    return hi;
-  }
-
   Pool.physics = {
-    G, MAX_SPEED, MIN_SPEED, MAX_TIP, SQUIRT, createBall, rotate, speedFor, powerFor, strike,
-    createSim, step, anyMoving, traceAim, pocketAlong, cloneBalls, simulateShot, potPower,
+    G, MAX_SPEED, MIN_SPEED, MAX_TIP, createBall, rotate, speedFor, powerFor, strike,
+    createSim, step, anyMoving, traceAim, pocketAlong, cloneBalls, simulateShot,
   };
 })();

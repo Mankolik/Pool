@@ -83,10 +83,9 @@
   }
 
   // ---- Table layer ------------------------------------------------------------------------------
-  // Pre-rendered once per rack (and on resize): room floor, table shadow, wooden rails with grain,
-  // cushions, cloth (felt texture, wear, sand, the world's markings) and the lamp light over it all.
-  function buildLayer(rack, world, ppm) {
-    const table = rack.table;
+  // Pre-rendered once (and on resize or a style change): room floor, table shadow, rails with grain,
+  // cushions, cloth (felt texture and the room's touches) and the lamp light over it all.
+  function buildLayer(table, world, ppm) {
     const hw = table.hw, hl = table.hl;
     const ox = hw + RAIL, oy = hl + RAIL; // outer edge of the rails
     const x0 = -ox - MARGIN, y0 = -oy - MARGIN;
@@ -142,7 +141,7 @@
     ctx.putImageData(img, 0, 0);
     // Vector details on top, in table metres.
     ctx.setTransform(ppm, 0, 0, ppm, -x0 * ppm, -y0 * ppm);
-    drawTableDetails(ctx, rack, world, ppm);
+    drawTableDetails(ctx, table, world, ppm);
     return { canvas, x0, y0, w: wM, h: hM, ppm };
   }
 
@@ -281,20 +280,11 @@
       default:
         break;
     }
-    // Sand blown in from the beach.
-    if (table.sand.length) {
-      const s = table.sandAt(x, y);
-      if (s > 0) {
-        const q = clamp(s / 3.2, 0, 1) * 0.8 * (0.45 + 0.55 * hash2((x * 500) | 0, (y * 500) | 0, 2)) * (0.85 + 0.3 * noise.value(x * 40, y * 40));
-        c = [lerp(c[0], 226, q), lerp(c[1], 204, q), lerp(c[2], 150, q)];
-      }
-    }
     if (dark && edge < 0) c = dark;
     return [c[0] * k, c[1] * k, c[2] * k];
   }
 
-  function drawTableDetails(ctx, rack, W, ppm) {
-    const table = rack.table;
+  function drawTableDetails(ctx, table, W, ppm) {
     const hw = table.hw, hl = table.hl;
     const px = 1 / ppm;
     // Pockets: dark throats cut through cushion and rail, with liners.
@@ -333,20 +323,6 @@
     ctx.beginPath();
     ctx.moveTo(-hw, HEAD_Y); ctx.lineTo(hw, HEAD_Y);
     ctx.stroke();
-    // Sand patch rims.
-    for (const s of table.sand) {
-      ctx.save();
-      ctx.translate(s.x, s.y);
-      ctx.rotate(s.a);
-      ctx.fillStyle = 'rgba(240,222,170,0.12)';
-      for (let k = 0; k < 14; k++) {
-        const a = hash2(k, 1, s.x * 1000) * Math.PI * 2, rr = 0.85 + hash2(k, 2, s.y * 1000) * 0.4;
-        ctx.beginPath();
-        ctx.arc(Math.cos(a) * s.rx * rr, Math.sin(a) * s.ry * rr, 0.004, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
     drawProps(ctx, table, W);
   }
 
@@ -709,7 +685,7 @@
     // Turn the number spot (+x) towards the viewer (−z).
     Pool.physics.rotate(b.rot, 0, 1, 0, Math.PI / 2);
     Pool.physics.rotate(b.rot, 0, 0, 1, -Math.PI / 2);
-    const sp = r.ballSprite(b, world || Pool.WORLDS.pub);
+    const sp = r.ballSprite(b, world);
     const url = sp.canvas.toDataURL ? sp.canvas.toDataURL() : '';
     iconCache.set(key, url);
     return url;
@@ -718,34 +694,18 @@
   // ---- Per-frame drawing ------------------------------------------------------------------------
   Renderer.prototype.draw = function (game, t) {
     const ctx = this.ctx;
-    const rack = game.rack, world = game.world;
+    const table = game.table, world = game.look;
     this.setScreen();
     ctx.fillStyle = world ? rgb(world.floorB, 0.45) : '#0d1a10';
     ctx.fillRect(0, 0, this.vw, this.vh);
-    if (!rack || !this.layer) return;
+    if (!table || !this.layer) return;
     const L = this.layer;
     this.setWorld();
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(L.canvas, L.x0, L.y0, L.w, L.h);
-    const table = rack.table;
     const s = this.view.s;
     const px = 1 / s;
 
-    // Lucky pocket (casino): a pulsing gold ring.
-    if (table.lucky >= 0) {
-      const p = table.pockets[table.lucky];
-      const pulse = 0.5 + 0.5 * Math.sin(t * 3);
-      ctx.save();
-      ctx.strokeStyle = `rgba(255,214,64,${0.55 + pulse * 0.4})`;
-      ctx.lineWidth = 0.006 + pulse * 0.004;
-      ctx.shadowColor = '#ffd640';
-      ctx.shadowBlur = 12 * this.dpr;
-      ctx.beginPath();
-      ctx.arc(p.x + p.sx * 0.02, p.y + (p.sy || 0) * 0.02, p.drawR * 1.25, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-      this.text('★', p.x + p.sx * 0.115, p.y + (p.sy || 0) * 0.115 + (p.sy ? 0 : 0), 0.05, '#ffd640');
-    }
     // Ball-in-hand: show where the cue ball may go.
     if (game.phase === 'place' && game.handZone === 'kitchen') {
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
@@ -755,15 +715,6 @@
       ctx.setLineDash([6 * px, 6 * px]);
       ctx.beginPath(); ctx.moveTo(-table.hw, HEAD_Y); ctx.lineTo(table.hw, HEAD_Y); ctx.stroke();
       ctx.setLineDash([]);
-    }
-    // Target highlight (rotation racks): a soft ring under the ball you must hit first.
-    if (game.targetBall != null && ['aim', 'place', 'backswing', 'downswing'].includes(game.phase)) {
-      const b = game.balls.find((q) => q.n === game.targetBall && !q.pocketed);
-      if (b) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.2 * Math.sin(t * 4)})`;
-        ctx.lineWidth = 2 * px;
-        ctx.beginPath(); ctx.arc(b.x, b.y, R * 1.55, 0, Math.PI * 2); ctx.stroke();
-      }
     }
     // Shadows: one soft shadow per lamp, cast away from it.
     for (const b of game.balls) {
@@ -973,34 +924,58 @@
     ctx.restore();
   };
 
-  // The spin picker: the cue ball seen from behind with the tip contact point.
-  function drawSpinPicker(canvas, a, b, risk, dpr) {
+  // The spin picker: the cue ball seen from behind, with where the tip will strike it.
+  function drawSpinPicker(canvas, a, b, dpr) {
     const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+    if (!w || !h) return;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const r = Math.min(w, h) / 2 - 3, cx = w / 2, cy = h / 2;
+    const big = r > 40;
+    if (big) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath(); ctx.arc(cx + 3, cy + 5, r, 0, Math.PI * 2); ctx.fill();
+    }
     const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.4, r * 0.1, cx, cy, r);
     g.addColorStop(0, '#ffffff'); g.addColorStop(0.7, '#e9e6dc'); g.addColorStop(1, '#a9a597');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-    // Safe zone and the miscue limit.
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    // Guides: centre lines, half-tip ring and the edge of the usable area.
+    ctx.strokeStyle = 'rgba(0,0,0,0.16)';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
-    ctx.strokeStyle = 'rgba(232,50,43,0.45)';
-    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.3, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.setLineDash([4, 4]);
     ctx.beginPath(); ctx.arc(cx, cy, r * Pool.physics.MAX_TIP, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
+    if (big) {
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('FOLLOW', cx, cy - r * 0.8);
+      ctx.fillText('DRAW', cx, cy + r * 0.8);
+      ctx.save(); ctx.translate(cx - r * 0.8, cy); ctx.rotate(-Math.PI / 2); ctx.fillText('LEFT', 0, 0); ctx.restore();
+      ctx.save(); ctx.translate(cx + r * 0.8, cy); ctx.rotate(Math.PI / 2); ctx.fillText('RIGHT', 0, 0); ctx.restore();
+    }
+    // The tip mark: a chalk-blue dot (with a crosshair on the big window).
     const tx = cx + a * r, ty = cy - b * r;
+    const tr = big ? r * 0.12 : Math.max(3.5, r * 0.22);
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    ctx.beginPath(); ctx.arc(tx + 1, ty + 1.5, 5.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = risk > 0.15 ? '#e8322b' : '#2f6fd6';
-    ctx.beginPath(); ctx.arc(tx, ty, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(tx + 1, ty + 1.5, tr, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2f6fd6';
+    ctx.beginPath(); ctx.arc(tx, ty, tr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath(); ctx.arc(tx - 1.5, ty - 1.5, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(tx - tr * 0.3, ty - tr * 0.3, tr * 0.32, 0, Math.PI * 2); ctx.fill();
+    if (big) {
+      ctx.strokeStyle = 'rgba(20,40,90,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(tx - tr * 1.8, ty); ctx.lineTo(tx - tr * 1.2, ty); ctx.moveTo(tx + tr * 1.2, ty); ctx.lineTo(tx + tr * 1.8, ty);
+      ctx.moveTo(tx, ty - tr * 1.8); ctx.lineTo(tx, ty - tr * 1.2); ctx.moveTo(tx, ty + tr * 1.2); ctx.lineTo(tx, ty + tr * 1.8); ctx.stroke();
+    }
   }
 
   Pool.render = { Renderer, buildLayer, ballIcon, drawSpinPicker, lampLight, LAMPS };

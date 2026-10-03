@@ -1,4 +1,4 @@
-// Table geometry (cushion noses, pocket jaws and facings), rack layouts and seeded tour generation.
+// Table geometry (cushion noses, pocket jaws and facings), the rack and ball-in-hand placement.
 // Coordinates are metres with the origin at the table centre: x to the right, y down the screen.  The
 // head (breaking) end is at the bottom (+y), the foot spot and rack at the top (−y).
 (function () {
@@ -22,7 +22,7 @@
   // ---- Geometry --------------------------------------------------------------------------------
   // Cushion noses and jaw facings are line segments.  The ball's centre may come no closer than R to
   // any of them, which also makes the jaw points (segment ends) act like real rounded jaws.
-  function buildTable(env, opts = {}) {
+  function buildTable(env) {
     const k = env.pocketK || 1;
     const hw = W / 2, hl = L / 2;
     const c = 0.084 * k; // corner jaw: distance from the corner along each rail
@@ -73,172 +73,30 @@
     }
     return {
       W, L, R, RAIL, CUSHION, hw, hl, HEAD_Y, FOOT_Y, segs, pockets,
-      tilt: opts.tilt || null, sand: opts.sand || [], lucky: opts.lucky ?? -1,
-      sandAt(x, y) {
-        for (const p of this.sand) {
-          const dx = x - p.x, dy = y - p.y;
-          const u = (dx * p.c + dy * p.s) / p.rx, v = (-dx * p.s + dy * p.c) / p.ry;
-          const d = u * u + v * v;
-          if (d < 1) return p.k * (1 - d * d);
-        }
-        return 0;
-      },
+
     };
   }
 
-  // ---- Racks -----------------------------------------------------------------------------------
-  const RACKS = {
-    eight: { name: 'Eight-ball', short: '8-ball', balls: 15, rule: 'Any order — but the 8 goes down last.' },
-    nine: { name: 'Nine-ball', short: '9-ball', balls: 9, rule: 'Hit the lowest ball first. Pot the 9 on a legal shot to clear the rack.' },
-    six: { name: 'Six-pack', short: '6-pack', balls: 6, rule: 'Six balls, any order.' },
-    scatter: { name: 'Open table', short: 'Open', balls: 0, rule: 'Balls are spread out. Ball in hand anywhere, any order.' },
-    rotation: { name: 'Rotation', short: 'Rotation', balls: 0, rule: 'Spread out, but always hit the lowest ball first.' },
-  };
-
-  // Triangle/diamond slot positions (apex at the foot spot, rows going up the table).
-  function rackSlots(rows, rng) {
+  // ---- Rack -------------------------------------------------------------------------------------
+  // A standard 15-ball triangle: the 1 on the foot spot, the 8 in the middle, a solid and a stripe in the
+  // back corners, the rest shuffled.  Tiny random gaps make every break a little different.
+  function rackBalls(rng) {
     const dy = R * Math.sqrt(3) + 0.0004, dx = 2 * R + 0.0004;
     const slots = [];
-    rows.forEach((n, r) => {
-      for (let j = 0; j < n; j++) {
-        // Tiny gaps make every break a little different, like a real (imperfect) rack.
-        slots.push({ x: (j - (n - 1) / 2) * dx + (rng.next() - 0.5) * 0.0002, y: FOOT_Y - r * dy - rng.next() * 0.0001, row: r, j });
-      }
+    [1, 2, 3, 4, 5].forEach((n, r) => {
+      for (let j = 0; j < n; j++) slots.push({ x: (j - (n - 1) / 2) * dx + (rng.next() - 0.5) * 0.0002, y: FOOT_Y - r * dy - rng.next() * 0.0001, row: r, j });
     });
-    return slots;
-  }
-
-  function layoutRack(type, rng, table, opts = {}) {
-    const balls = [];
-    if (type === 'eight') {
-      const slots = rackSlots([1, 2, 3, 4, 5], rng);
-      const at = (r, j) => slots.findIndex((s) => s.row === r && s.j === j);
-      const placed = new Array(15).fill(0);
-      placed[at(0, 0)] = 1;
-      placed[at(2, 1)] = 8;
-      // One solid and one stripe in the back corners.
-      const solids = [2, 3, 4, 5, 6, 7], stripes = [9, 10, 11, 12, 13, 14, 15];
-      rng.shuffle(solids); rng.shuffle(stripes);
-      const left = rng.chance(0.5);
-      placed[at(4, 0)] = left ? solids.pop() : stripes.pop();
-      placed[at(4, 4)] = left ? stripes.pop() : solids.pop();
-      const rest = rng.shuffle(solids.concat(stripes));
-      for (let i = 0; i < 15; i++) if (!placed[i]) placed[i] = rest.pop();
-      slots.forEach((s, i) => balls.push({ n: placed[i], x: s.x, y: s.y }));
-    } else if (type === 'nine') {
-      const slots = rackSlots([1, 2, 3, 2, 1], rng);
-      const mid = slots.findIndex((s) => s.row === 2 && s.j === 1);
-      const rest = rng.shuffle([2, 3, 4, 5, 6, 7, 8]);
-      slots.forEach((s, i) => balls.push({ n: i === 0 ? 1 : i === mid ? 9 : rest.pop(), x: s.x, y: s.y }));
-    } else if (type === 'six') {
-      const slots = rackSlots([1, 2, 3], rng);
-      const nums = [1].concat(rng.shuffle([2, 3, 4, 5, 6]));
-      slots.forEach((s, i) => balls.push({ n: nums[i], x: s.x, y: s.y }));
-    } else {
-      // Open table: seeded spread with the odd cluster and a couple of balls on the rails.
-      const n = opts.count || 7;
-      const ok = (x, y) => {
-        if (Math.abs(x) > table.hw - R - 0.004 || Math.abs(y) > table.hl - R - 0.004) return false;
-        for (const p of table.pockets) if (Math.hypot(x - p.x, y - p.y) < p.r + R + 0.07) return false;
-        for (const b of balls) if (Math.hypot(x - b.x, y - b.y) < 2 * R + 0.002) return false;
-        return true;
-      };
-      let tries = 0;
-      while (balls.length < n && tries++ < 5000) {
-        let x, y;
-        const prev = balls.length ? balls[balls.length - 1] : null;
-        if (prev && rng.chance(0.22)) {
-          // Frozen to the previous ball: a small cluster to break up or play a combination off.
-          const a = rng.float(0, Math.PI * 2);
-          x = prev.x + Math.cos(a) * (2 * R + 0.0025); y = prev.y + Math.sin(a) * (2 * R + 0.0025);
-        } else if (rng.chance(0.18)) {
-          // On (or very near) a cushion.
-          const side = rng.int(0, 3), t = rng.float(-0.42, 0.42);
-          const gap = R + rng.float(0.001, 0.02);
-          if (side < 2) { x = (side ? 1 : -1) * (table.hw - gap); y = t * L; } else { x = t * 2 * table.hw * 0.9; y = (side === 2 ? -1 : 1) * (table.hl - gap); }
-        } else {
-          x = rng.float(-table.hw + 0.06, table.hw - 0.06); y = rng.float(-table.hl + 0.08, table.hl - 0.08);
-        }
-        if (ok(x, y)) balls.push({ n: 0, x, y });
-      }
-      const nums = [];
-      for (let i = 1; i <= balls.length; i++) nums.push(i);
-      rng.shuffle(nums);
-      balls.forEach((b, i) => { b.n = nums[i]; });
-    }
-    return balls;
-  }
-
-  // Par: roughly what a solid amateur needs (break, a miss or two, a safety now and then).  Tuned with
-  // the balance harness in tests/autoplay.js.
-  function rackPar(type, count, parK = 1) {
-    let base;
-    switch (type) {
-      case 'eight': base = 23.5; break;
-      case 'nine': base = 16; break;
-      case 'six': base = 9; break;
-      case 'rotation': base = count * 2; break;
-      default: base = count * 1.6 - 0.3;
-    }
-    return Math.round(base * parK);
-  }
-
-  // ---- Tours -------------------------------------------------------------------------------------
-  const EVENT_WORDS = ['Open', 'Classic', 'Invitational', 'Shootout', 'Masters', 'Cup', 'Challenge', 'Nine-Rack Derby'];
-  // A tour is nine racks: a gentle opener, then a mix that always includes a full eight-ball rack.
-  const PATTERNS = [
-    ['six', 'scatter', 'nine', 'scatter', 'eight', 'rotation', 'nine', 'scatter', 'eight'],
-    ['scatter', 'six', 'nine', 'rotation', 'scatter', 'eight', 'nine', 'six', 'nine'],
-    ['six', 'nine', 'scatter', 'eight', 'scatter', 'nine', 'rotation', 'scatter', 'eight'],
-    ['scatter', 'nine', 'six', 'scatter', 'eight', 'scatter', 'nine', 'rotation', 'nine'],
-  ];
-
-  function generateTour(seed) {
-    seed = String(seed);
-    const h = Pool.hashString(seed.toLowerCase());
-    const rng = new Pool.RNG(h);
-    const world = Pool.worldForSeed(seed);
-    const name = `${rng.pick(world.venues)} ${rng.pick(EVENT_WORDS)}`;
-    const types = rng.pick(PATTERNS).slice();
-    const racks = types.map((type, i) => {
-      const count = type === 'scatter' ? rng.int(4, 8) : type === 'rotation' ? rng.int(5, 8) : RACKS[type].balls;
-      return { type, count, par: rackPar(type, count, world.parK), seed: (h ^ Math.imul(i + 1, 0x9e3779b1)) >>> 0 };
-    });
-    // The table is the same all tour, so its lean (saloon) is too.
-    const tilt = world.env.tilt ? { a: rng.float(0, Math.PI * 2), m: world.env.tilt * rng.float(0.8, 1.2) } : null;
-    if (tilt) { tilt.x = Math.cos(tilt.a) * tilt.m; tilt.y = Math.sin(tilt.a) * tilt.m; }
-    return {
-      seed, name, world, racks, tilt,
-      pars: racks.map((r) => r.par),
-      getRack(i) { return buildRack(this, i); },
-    };
-  }
-
-  function buildRack(tour, i) {
-    const spec = tour.racks[i];
-    const rng = new Pool.RNG(spec.seed);
-    const env = tour.world.env;
-    const sand = [];
-    if (env.sand) {
-      const n = rng.int(3, 5);
-      for (let k = 0; k < n; k++) {
-        const a = rng.float(0, Math.PI);
-        sand.push({ x: rng.float(-0.5, 0.5), y: rng.float(-1.1, 1.1), rx: rng.float(0.08, 0.2), ry: rng.float(0.05, 0.12), c: Math.cos(a), s: Math.sin(a), k: rng.float(2.5, 4), a });
-      }
-    }
-    const lucky = tour.world.id === 'casino' ? rng.int(0, 5) : -1;
-    const table = buildTable(env, { tilt: tour.tilt, sand, lucky });
-    const balls = layoutRack(spec.type, rng, table, { count: spec.count });
-    const broken = spec.type === 'scatter' || spec.type === 'rotation';
-    return {
-      index: i, type: spec.type, info: RACKS[spec.type], par: spec.par, table, balls,
-      order: spec.type === 'nine' || spec.type === 'rotation' ? 'lowest' : 'any',
-      lastBall: spec.type === 'eight' ? 8 : null,
-      moneyBall: spec.type === 'nine' ? 9 : null,
-      hand: broken ? 'anywhere' : 'kitchen',
-      isBreak: !broken,
-      cueStart: broken ? { x: 0, y: L * 0.32 } : { x: rng.float(-0.25, 0.25), y: L * 0.34 },
-    };
+    const at = (r, j) => slots.findIndex((s) => s.row === r && s.j === j);
+    const placed = new Array(15).fill(0);
+    placed[at(0, 0)] = 1;
+    placed[at(2, 1)] = 8;
+    const solids = rng.shuffle([2, 3, 4, 5, 6, 7]), stripes = rng.shuffle([9, 10, 11, 12, 13, 14, 15]);
+    const left = rng.chance(0.5);
+    placed[at(4, 0)] = left ? solids.pop() : stripes.pop();
+    placed[at(4, 4)] = left ? stripes.pop() : solids.pop();
+    const rest = rng.shuffle(solids.concat(stripes));
+    for (let i = 0; i < 15; i++) if (!placed[i]) placed[i] = rest.pop();
+    return slots.map((s, i) => ({ n: placed[i], x: s.x, y: s.y }));
   }
 
   // Is a cue-ball position legal for ball in hand?
@@ -262,18 +120,5 @@
     }
     return null;
   }
-  // A free spot on the long string for a respotted ball (foot spot first, then towards the foot rail).
-  function spotBall(table, balls, n) {
-    for (let d = 0; d < 1.2; d += 0.004) {
-      for (const y of [FOOT_Y - d, FOOT_Y + d]) {
-        if (Math.abs(y) > table.hl - R) continue;
-        if (balls.every((b) => b.pocketed || b.n === n || Math.hypot(b.x - 0, b.y - y) >= 2 * R + 0.0005)) return { x: 0, y };
-      }
-    }
-    return { x: 0, y: FOOT_Y };
-  }
-
-  Pool.table = { W, L, R, RAIL, CUSHION, HEAD_Y, FOOT_Y, BALL_COLORS, ballColor, buildTable, layoutRack, placeOk, nearestPlace, spotBall, rackPar };
-  Pool.RACKS = RACKS;
-  Pool.generateTour = generateTour;
+  Pool.table = { W, L, R, RAIL, CUSHION, HEAD_Y, FOOT_Y, BALL_COLORS, ballColor, buildTable, rackBalls, placeOk, nearestPlace };
 })();
