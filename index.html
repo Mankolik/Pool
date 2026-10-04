@@ -7,13 +7,13 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="description" content="Pool! — solo pocket pool with real ball and spin physics. Clear the table in as few shots as you can.">
-  <title>Pool!</title>
+  <meta name="description" content="Poolio — solo pocket pool with real ball and spin physics. Clear the table in as few shots as you can.">
+  <title>Poolio</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <meta name="apple-mobile-web-app-title" content="Pool!">
+  <meta name="apple-mobile-web-app-title" content="Poolio">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -82,43 +82,60 @@
 
     <div id="menu" class="overlay">
       <div class="card">
-        <h1><span class="sr-only">Pool!</span>
-          <svg class="logo" viewBox="0 0 430 140" aria-hidden="true">
+        <h1><span class="sr-only">Poolio</span>
+          <svg class="logo" viewBox="0 0 440 150" aria-hidden="true">
               <defs>
-                <radialGradient id="pool-cue" cx="0.36" cy="0.3" r="0.78">
-                  <stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f1eee4"/><stop offset="1" stop-color="#bdb7a4"/>
+                <radialGradient id="pl-y" cx="0.35" cy="0.3" r="0.8">
+                  <stop offset="0" stop-color="#ffe58a"/><stop offset="0.55" stop-color="#f2b80f"/><stop offset="1" stop-color="#a8740a"/>
                 </radialGradient>
-                <radialGradient id="pool-eight" cx="0.36" cy="0.3" r="0.8">
-                  <stop offset="0" stop-color="#5a5a60"/><stop offset="0.45" stop-color="#1a1a1e"/><stop offset="1" stop-color="#000"/>
+                <radialGradient id="pl-r" cx="0.35" cy="0.3" r="0.8">
+                  <stop offset="0" stop-color="#ff8a7a"/><stop offset="0.55" stop-color="#d42a20"/><stop offset="1" stop-color="#7e120c"/>
+                </radialGradient>
+                <radialGradient id="pl-b" cx="0.35" cy="0.3" r="0.8">
+                  <stop offset="0" stop-color="#8fb2ff"/><stop offset="0.55" stop-color="#2456c4"/><stop offset="1" stop-color="#0f2a6e"/>
+                </radialGradient>
+                <radialGradient id="pl-w" cx="0.35" cy="0.3" r="0.8">
+                  <stop offset="0" stop-color="#ffffff"/><stop offset="0.55" stop-color="#f1eee4"/><stop offset="1" stop-color="#b9b3a0"/>
                 </radialGradient>
               </defs>
-              <!-- the shot: cue ball into the 8, the 8 into the pocket -->
-              <path d="M150 40 C166 18 196 16 212 28 M262 44 C300 0 352 -6 366 104" fill="none" stroke="#f6f1e3" stroke-opacity="0.32" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
-              <g transform="translate(14 0) skewX(-9)">
-                <g transform="translate(5 6)" fill="none" stroke="#06140c" stroke-opacity="0.45" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M34 115 V25 H58 a22 22 0 0 1 0 44 H34"/>
-                  <path d="M300 25 V115 H342"/>
-                  <path d="M382 14 V86" stroke-width="15"/>
-                </g>
-                <g fill="none" stroke="#f6f1e3" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M34 115 V25 H58 a22 22 0 0 1 0 44 H34"/>
-                  <path d="M300 25 V115 H342"/>
-                  <path d="M382 12 V88" stroke-width="15"/>
-                </g>
+              <!-- p, l, i: rounded cream strokes, upright -->
+              <g fill="none" stroke="#04110a" stroke-opacity="0.4" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" transform="translate(3 5)">
+                <path d="M36 52 V136"/>
+                <circle cx="66" cy="82" r="30"/>
+                <path d="M292 18 V112"/>
+                <path d="M330 60 V112"/>
               </g>
-              <!-- O O: the cue ball and the 8 (kept round, outside the slant) -->
-              <circle cx="133" cy="76" r="40" fill="#06140c" fill-opacity="0.45"/>
-              <circle cx="128" cy="70" r="40" fill="url(#pool-cue)"/>
-              <circle cx="112" cy="58" r="4.5" fill="#c81e24"/>
-              <circle cx="143" cy="92" r="3.5" fill="#c81e24" opacity="0.8"/>
-              <circle cx="237" cy="76" r="40" fill="#06140c" fill-opacity="0.45"/>
-              <circle cx="232" cy="70" r="40" fill="url(#pool-eight)"/>
-              <circle cx="226" cy="64" r="17" fill="#f6f1e3"/>
-              <text x="226" y="71" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="800" font-size="22" fill="#111">8</text>
-              <ellipse cx="214" cy="44" rx="9" ry="5" fill="#fff" opacity="0.35" transform="rotate(-30 214 44)"/>
-              <!-- the dot of the !: a pocket -->
-              <ellipse cx="377" cy="116" rx="18" ry="8" fill="#06140c"/>
-              <path d="M359 116.5 a18 8 0 0 0 36 0" fill="none" stroke="#c9a45a" stroke-opacity="0.7" stroke-width="3"/>
+              <g fill="none" stroke="#f6f1e3" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M36 52 V136"/>
+                <circle cx="66" cy="82" r="30"/>
+                <path d="M292 18 V112"/>
+                <path d="M330 60 V112"/>
+              </g>
+              <g>
+                <circle cx="155" cy="87" r="34" fill="#04110a" fill-opacity="0.4"/>
+                <circle cx="152" cy="82" r="34" fill="url(#pl-y)"/>
+                <circle cx="148" cy="78" r="14.3" fill="#fbf7ec"/>
+                <text x="148" y="85.5" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="800" font-size="17" fill="#141414">1</text>
+                <ellipse cx="137.7" cy="64.3" rx="10.2" ry="5.1" fill="#fff" opacity="0.45" transform="rotate(-35 137.7 64.3)"/>
+              </g>
+              <g>
+                <circle cx="229" cy="87" r="34" fill="#04110a" fill-opacity="0.4"/>
+                <circle cx="226" cy="82" r="34" fill="url(#pl-r)"/>
+                <circle cx="222" cy="78" r="14.3" fill="#fbf7ec"/>
+                <text x="222" y="85.5" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="800" font-size="17" fill="#141414">3</text>
+                <ellipse cx="211.7" cy="64.3" rx="10.2" ry="5.1" fill="#fff" opacity="0.45" transform="rotate(-35 211.7 64.3)"/>
+              </g>
+              <g>
+                <circle cx="389" cy="87" r="34" fill="#04110a" fill-opacity="0.4"/>
+                <circle cx="386" cy="82" r="34" fill="url(#pl-b)"/>
+                <circle cx="382" cy="78" r="14.3" fill="#fbf7ec"/>
+                <text x="382" y="85.5" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-weight="800" font-size="17" fill="#141414">2</text>
+                <ellipse cx="371.7" cy="64.3" rx="10.2" ry="5.1" fill="#fff" opacity="0.45" transform="rotate(-35 371.7 64.3)"/>
+              </g>
+              <!-- the dot of the i: the cue ball, with its red spot -->
+              <circle cx="332" cy="33" r="14" fill="#04110a" fill-opacity="0.4"/>
+              <circle cx="330" cy="30" r="14" fill="url(#pl-w)"/>
+              <circle cx="326" cy="26" r="3.2" fill="#c81e24"/>
           </svg>
         </h1>
         <p class="tag">Solo pocket pool · clear the table</p>

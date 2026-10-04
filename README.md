@@ -1,6 +1,6 @@
-<p align="center"><img src="logo.svg" alt="Pool!" width="420"></p>
+<p align="center"><img src="logo.svg" alt="Poolio" width="420"></p>
 
-# Pool!
+# Poolio
 
 A mobile-first solo pool game for the browser: rack up 15 balls and clear the table in as few shots as you can.
 Real ball physics with full spin, a precise strength slider, and a table you can restyle.
@@ -8,7 +8,7 @@ No build step and no dependencies, so it runs straight from GitHub Pages.
 
 ## Play offline / install as an app
 
-Pool! is an installable web app (PWA): after the first visit everything is cached on the device, so it
+Poolio is an installable web app (PWA): after the first visit everything is cached on the device, so it
 plays with no connection and launches full-screen from the home screen.
 
 - **iPhone / iPad (Safari):** open the site, tap **Share → Add to Home Screen**.

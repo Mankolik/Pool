@@ -1,6 +1,6 @@
 {
-  "name": "Pool! Pocket Pool",
-  "short_name": "Pool!",
+  "name": "Poolio — Pocket Pool",
+  "short_name": "Poolio",
   "description": "Pocket pool with real ball and spin physics and endless seeded tours.",
   "start_url": "./",
   "scope": "./",
