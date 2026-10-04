@@ -2,7 +2,7 @@
 // slider, floating spin window, ball in hand, input, camera, HUD, saving and the table-style screen.
 (function () {
   const Pool = globalThis.Pool;
-  const { physics: P, render: Rn, audio, themes: TH } = Pool;
+  const { physics: P, render: Rn, audio, themes: TH, conditions: C } = Pool;
   const T = Pool.table;
   const { clamp, lerp } = Pool.util;
   const R = T.R;
@@ -21,11 +21,15 @@
     btnStyleMenu: $('btn-style-menu'), best: $('best-label'),
     style: $('style'), stylePreview: $('style-preview'), clothOpts: $('cloth-options'), railOpts: $('rail-options'), roomOpts: $('room-options'),
     guideOpts: $('guide-options'), styleDone: $('btn-style-done'),
+    condPanel: $('cond-panel'), condLabel: $('cond-label'), lean: $('lean-canvas'),
+    setup: $('setup'), condOpts: $('cond-options'), setupBest: $('setup-best'), btnBreak: $('btn-break'), btnStandard: $('btn-standard'), btnSetupBack: $('btn-setup-back'),
+    change: $('btn-change'),
     result: $('result'), resultTitle: $('result-title'), resultBody: $('result-body'), again: $('btn-again'), resultMenu: $('btn-result-menu'),
   };
 
   const SAVE_KEY = 'pool.game.v2';
-  const BEST_KEY = 'pool.best.v2';
+  const BEST_KEY = 'pool.bests.v1'; // best score per combination of table conditions
+  const CONDS_KEY = 'pool.conds.v1';
   const STYLE_KEY = 'pool.style.v1';
   const POWER_KEY = 'pool.power.v1';
   const MAX_PULL = 0.2; // how far the cue draws back at full strength (m)
@@ -41,7 +45,8 @@
   const game = {
     settings: { ...TH.DEFAULT, ...loadJSON(STYLE_KEY, {}) },
     look: null, table: null, balls: [], cue: null, sim: null,
-    phase: 'menu', inGame: false, shots: 0, fouls: 0, elapsed: 0,
+    phase: 'menu', inGame: false, shots: 0, fouls: 0, bonus: 0, elapsed: 0,
+    conds: C.normalize(loadJSON(CONDS_KEY, {})), extras: { tilt: null, sand: [], lucky: -1 }, env: TH.ENV, tableId: 0,
     aim: -Math.PI / 2, power: clamp(+loadJSON(POWER_KEY, 0.4) || 0.4, 0.01, 1), spinA: 0, spinB: 0,
     cueStick: { angle: -Math.PI / 2, pull: 0.012, alpha: 1, anchor: null }, strikeT: 0,
     guide: null, guideKey: '', particles: [], handZone: 'kitchen', placeOk: true, shot: null,
@@ -50,6 +55,14 @@
   };
   game.look = TH.makeLook(game.settings);
   game.table = T.buildTable(TH.ENV);
+  // The playing table for the current conditions (pocket size, lean, sand, lucky pocket).
+  function setupTable(conds, extras) {
+    game.conds = C.normalize(conds);
+    game.extras = extras;
+    game.env = C.envFor(game.conds);
+    game.table = T.buildTable(game.env, { tilt: extras.tilt, sand: extras.sand, lucky: extras.lucky });
+    game.tableId++;
+  }
   game.renderer = new Rn.Renderer(els.canvas);
 
   // ---------------------------------------------------------------------------------------------
@@ -69,15 +82,17 @@
     if (!els.spinWin.dataset.moved) els.spinWin.style.bottom = side ? '' : vh - ctl.top + 8 + 'px';
     fitView(true);
     drawSpin();
+    if (game.inGame) updateConditionsHud();
   }
   function fitView(force) {
     const r = game.renderer;
     const v = r.fit(game.area, game.zoom, game.focus);
     if (!game.inGame) return;
-    if (force || !r.layer || layerLook !== game.look.id || Math.abs(v.base / layerBase - 1) > 0.15) {
-      if (force && r.layer && layerLook === game.look.id && Math.abs(v.base / layerBase - 1) < 0.02) return;
+    const lk = game.look.id + '#' + game.tableId;
+    if (force || !r.layer || layerLook !== lk || Math.abs(v.base / layerBase - 1) > 0.15) {
+      if (force && r.layer && layerLook === lk && Math.abs(v.base / layerBase - 1) < 0.02) return;
       layerBase = v.base;
-      layerLook = game.look.id;
+      layerLook = lk;
       r.layer = Rn.buildLayer(game.table, game.look, v.base * game.dpr * 1.4);
       r.sprites.clear();
     }
@@ -88,12 +103,14 @@
 
   // ---------------------------------------------------------------------------------------------
   // Game flow
-  function newGame() {
+  function newGame(conds = game.conds) {
     const rng = new Pool.RNG((Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0);
+    setupTable(conds, C.rollExtras(conds, rng));
+    saveJSON(CONDS_KEY, game.conds);
     const balls = T.rackBalls(rng).map((b) => P.createBall(b.n, b.x, b.y, rng));
     const cue = P.createBall(0, 0, T.L * 0.34, rng);
-    startWith([cue, ...balls], { shots: 0, fouls: 0, elapsed: 0, hand: 'kitchen' });
-    toast('Break!', 'Place the cue ball behind the line', 2000);
+    startWith([cue, ...balls], { shots: 0, fouls: 0, bonus: 0, elapsed: 0, hand: 'kitchen' });
+    toast('Break!', C.isStandard(game.conds) ? 'Place the cue ball behind the line' : C.summary(game.conds), 2200);
   }
 
   function startWith(balls, st) {
@@ -103,9 +120,10 @@
     setTimeout(() => {
       game.balls = balls;
       game.cue = balls.find((b) => b.n === 0);
-      game.sim = P.createSim(game.table, TH.ENV, game.balls);
+      game.sim = P.createSim(game.table, game.env, game.balls);
       game.shots = st.shots;
       game.fouls = st.fouls;
+      game.bonus = st.bonus || 0;
       game.elapsed = st.elapsed || 0;
       game.particles = [];
       game.zoom = game.zoomTarget = 1;
@@ -117,6 +135,7 @@
       if (st.hand) beginPlace(st.hand);
       else beginAim();
       save();
+      updateConditionsHud();
       updateHud(true);
     }, 30);
   }
@@ -194,7 +213,7 @@
   // Where the cue ball heads after contact: run its approach, then let follow/draw take over.
   function cueAfterContact(tr) {
     const c = { ...game.cue };
-    const sim = P.createSim(game.table, TH.ENV, [c]);
+    const sim = P.createSim(game.table, game.env, [c]);
     sim.trackRot = false;
     P.strike(c, game.aim, P.speedFor(Math.max(0.05, game.power)), game.spinA, game.spinB);
     const x0 = c.x, y0 = c.y;
@@ -226,7 +245,9 @@
     els.powerFill.style.width = pct + '%';
     els.powerThumb.style.left = pct + '%';
     els.powerValue.textContent = Math.round(pct) + '%';
-    els.powerSpeed.textContent = P.speedFor(game.power).toFixed(1) + ' m/s';
+    const v = P.speedFor(game.power);
+    const feel = v < 0.8 ? 'touch' : v < 1.8 ? 'soft' : v < 3.2 ? 'medium' : v < 4.8 ? 'firm' : v < 6.2 ? 'hard' : 'break';
+    els.powerSpeed.textContent = `${feel} · ${v.toFixed(1)} m/s`;
     els.powerTrack.setAttribute('aria-valuenow', Math.round(pct));
   }
   {
@@ -364,6 +385,16 @@
       game.fouls++;
       audio.play('foul');
       note(`Foul: ${foul} (+1)`, 'bad');
+    } else if (game.table.lucky >= 0 && potted.some((p) => p.pocket === game.table.lucky)) {
+      // Lucky pocket: one shot back, then the gold moves to another pocket.
+      game.bonus++;
+      audio.play('jackpot');
+      const p = game.table.pockets[game.table.lucky];
+      spray(p.x, p.y, '#ffd640', 22, 0.8, 0.006);
+      let next = game.table.lucky;
+      while (next === game.table.lucky) next = Math.floor(Math.random() * 6);
+      game.table.lucky = game.extras.lucky = next;
+      note(`★ Lucky pocket! −1 shot. The gold moves to the ${game.table.pockets[next].name}`, 'gold', 4000);
     } else if (potted.length > 1) note(`${potted.length} balls down!`, 'good');
     else if (!potted.length) note('No pot', 'info', 1500);
     updateHud();
@@ -377,10 +408,15 @@
     game.phase = 'done';
     game.inGame = false;
     clearSave();
-    const score = game.shots + game.fouls;
-    const best = loadJSON(BEST_KEY, null);
+    const score = Math.max(1, game.shots + game.fouls - game.bonus);
+    const bests = loadBests();
+    const key = C.key(game.conds);
+    const best = bests[key] || null;
     const isBest = !best || score < best.score;
-    if (isBest) saveJSON(BEST_KEY, { score, shots: game.shots, fouls: game.fouls, time: Math.round(game.elapsed), date: Date.now() });
+    if (isBest) {
+      bests[key] = { score, shots: game.shots, fouls: game.fouls, bonus: game.bonus, time: Math.round(game.elapsed), date: Date.now(), conds: game.conds };
+      saveJSON(BEST_KEY, bests);
+    }
     audio.play('clear');
     toast('Table cleared!', `${score} ${score === 1 ? 'shot' : 'shots'}`, 2200);
     setTimeout(() => {
@@ -388,15 +424,26 @@
       els.resultBody.innerHTML = '';
       const sc = document.createElement('div');
       sc.className = 'score';
-      sc.textContent = `${score} shots`;
+      sc.textContent = `${score} ${score === 1 ? 'shot' : 'shots'}`;
       const d = document.createElement('div');
-      d.textContent = `${game.shots} strokes${game.fouls ? ` + ${game.fouls} ${game.fouls === 1 ? 'foul' : 'fouls'}` : ', no fouls'} · ${fmtTime(game.elapsed)}`;
+      d.textContent = `${game.shots} strokes${game.fouls ? ` + ${game.fouls} ${game.fouls === 1 ? 'foul' : 'fouls'}` : ', no fouls'}${game.bonus ? ` − ${game.bonus} ★` : ''} · ${fmtTime(game.elapsed)}`;
+      const c = document.createElement('div');
+      c.className = 'muted';
+      c.textContent = C.summary(game.conds);
       const b = document.createElement('div');
       b.className = 'muted';
-      b.textContent = isBest ? (best ? `Previous best: ${best.score}` : 'Your first clearance.') : `Best: ${best.score} shots`;
-      els.resultBody.append(sc, d, b);
+      const where = C.isStandard(game.conds) ? 'on the standard table' : 'with these conditions';
+      b.textContent = isBest ? (best ? `Previous best ${where}: ${best.score}` : `Your first clearance ${where}.`) : `Best ${where}: ${best.score} shots`;
+      els.resultBody.append(sc, d, c, b);
       els.result.classList.remove('hidden');
     }, 2300);
+  }
+  // Best scores, keyed by conditions.  (Migrates the single best from before conditions existed.)
+  function loadBests() {
+    const b = loadJSON(BEST_KEY, null);
+    if (b && typeof b === 'object') return b;
+    const old = loadJSON('pool.best.v2', null);
+    return old && old.score ? { standard: old } : {};
   }
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -528,7 +575,8 @@
     if (force) Object.keys(hudCache).forEach((k) => delete hudCache[k]);
     const playing = ['roll', 'settle', 'done'].includes(game.phase);
     setText(els.shots, 'shots', playing ? `Shots: ${game.shots}` : `Shot ${game.shots + 1}`);
-    setText(els.fouls, 'fouls', game.fouls ? `${game.fouls} ${game.fouls === 1 ? 'foul' : 'fouls'} (+${game.fouls})` : 'No fouls');
+    const fl = game.fouls ? `${game.fouls} ${game.fouls === 1 ? 'foul' : 'fouls'} (+${game.fouls})` : 'No fouls';
+    setText(els.fouls, 'fouls', game.bonus ? `${fl} · ★ −${game.bonus}` : fl);
     els.fouls.classList.toggle('bad', game.fouls > 0);
     const live = liveBalls();
     setText(els.left, 'left', game.phase === 'place' ? `✋ Ball in hand · ${live.length} left` : `${live.length} left`);
@@ -598,8 +646,9 @@
     if (!game.inGame || game.phase === 'loading') return;
     saveJSON(SAVE_KEY, {
       balls: game.balls.map((b) => ({ n: b.n, x: +b.x.toFixed(5), y: +b.y.toFixed(5), p: b.pocketed ? 1 : 0 })),
-      shots: game.shots, fouls: game.fouls, elapsed: Math.round(game.elapsed),
+      shots: game.shots, fouls: game.fouls, bonus: game.bonus, elapsed: Math.round(game.elapsed),
       hand: game.phase === 'place' ? game.handZone : null,
+      conds: game.conds, extras: game.extras,
     });
   }
   function clearSave() {
@@ -612,19 +661,21 @@
   }
   function resume(s) {
     const rng = new Pool.RNG(7);
+    const ex = s.extras || {};
+    setupTable(s.conds || {}, { tilt: ex.tilt || null, sand: Array.isArray(ex.sand) ? ex.sand : [], lucky: Number.isInteger(ex.lucky) ? ex.lucky : -1 });
     const balls = s.balls.map((b) => {
       const ball = P.createBall(b.n, b.x, b.y, rng);
       if (b.p) Object.assign(ball, { pocketed: true, sinkT: 1 });
       return ball;
     });
     const cue = balls.find((b) => b.n === 0);
-    startWith(balls, { shots: s.shots | 0, fouls: s.fouls | 0, elapsed: s.elapsed || 0, hand: s.hand || (cue.pocketed ? 'anywhere' : null) });
+    startWith(balls, { shots: s.shots | 0, fouls: s.fouls | 0, bonus: s.bonus | 0, elapsed: s.elapsed || 0, hand: s.hand || (cue.pocketed ? 'anywhere' : null) });
   }
 
   // ---------------------------------------------------------------------------------------------
   // Menus
   function hideOverlays() {
-    for (const o of [els.menu, els.result, els.style]) o.classList.add('hidden');
+    for (const o of [els.menu, els.result, els.style, els.setup]) o.classList.add('hidden');
   }
   function showMenu() {
     save();
@@ -637,12 +688,94 @@
     els.continueInfo.classList.toggle('hidden', !canContinue);
     if (canContinue) {
       const left = game.inGame ? liveBalls().length : s.balls.filter((b) => b.n !== 0 && !b.p).length;
-      const shots = game.inGame ? game.shots + game.fouls : s.shots + s.fouls;
-      els.continueInfo.textContent = `${left} balls left · ${shots} shots so far`;
+      const shots = game.inGame ? game.shots + game.fouls - game.bonus : s.shots + s.fouls - (s.bonus | 0);
+      const cond = C.summary(game.inGame ? game.conds : s.conds || {});
+      els.continueInfo.textContent = `${left} balls left · ${shots} shots so far · ${cond}`;
     }
     els.play.className = canContinue ? 'secondary' : 'primary';
-    const best = loadJSON(BEST_KEY, null);
-    els.best.textContent = best ? `🏆 Best clearance: ${best.score} shots (${fmtTime(best.time || 0)})` : '';
+    const bests = loadBests();
+    const lines = [];
+    if (bests.standard) lines.push(`🏆 Best on the standard table: ${bests.standard.score} shots`);
+    const last = C.key(game.conds);
+    if (last !== 'standard' && bests[last]) lines.push(`Best with ${C.summary(game.conds)}: ${bests[last].score}`);
+    els.best.textContent = lines.join('\n');
+  }
+
+  // Game setup: pick the table conditions, then break.
+  let setupSel = null;
+  function showSetup() {
+    hideOverlays();
+    setupSel = { ...game.conds };
+    els.condOpts.innerHTML = '';
+    for (const c of C.CONDITIONS) {
+      const row = document.createElement('div');
+      row.className = 'cond-row';
+      const name = document.createElement('div');
+      name.className = 'cond-name';
+      const ic = document.createElement('span');
+      ic.textContent = c.icon;
+      name.append(ic, c.name);
+      const chips = document.createElement('div');
+      chips.className = 'chips';
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      for (const o of c.options) {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.textContent = o.name;
+        b.dataset.id = o.id;
+        b.addEventListener('click', () => { setupSel[c.id] = o.id; syncSetup(); });
+        chips.append(b);
+      }
+      row.append(name, chips, hint);
+      row.dataset.cond = c.id;
+      els.condOpts.append(row);
+    }
+    syncSetup();
+    els.setup.classList.remove('hidden');
+  }
+  function syncSetup() {
+    for (const row of els.condOpts.children) {
+      const id = row.dataset.cond;
+      for (const b of row.querySelectorAll('.chip')) b.classList.toggle('on', b.dataset.id === setupSel[id]);
+      row.querySelector('.hint').textContent = C.option(id, setupSel[id]).hint || '';
+    }
+    const best = loadBests()[C.key(setupSel)];
+    const where = C.isStandard(setupSel) ? 'on the standard table' : 'with these conditions';
+    els.setupBest.textContent = best ? `🏆 Best ${where}: ${best.score} shots` : `No clearance yet ${where}.`;
+  }
+
+  // The HUD's conditions panel, with a spirit level when the table leans.
+  function updateConditionsHud() {
+    const std = C.isStandard(game.conds);
+    els.condPanel.classList.toggle('hidden', std);
+    if (std) return;
+    // Compact: one icon per active condition (the lean has its spirit level); tap for the full list.
+    const icons = C.CONDITIONS.filter((c) => c.id !== 'lean' && game.conds[c.id] !== C.STANDARD[c.id]).map((c) => c.icon);
+    els.condLabel.textContent = icons.join(' ');
+    els.condPanel.title = C.summary(game.conds);
+    const tilt = game.table.tilt;
+    els.lean.classList.toggle('hidden', !tilt);
+    if (!tilt) return;
+    const c = els.lean, dpr = game.dpr;
+    c.width = 30 * dpr; c.height = 30 * dpr;
+    const ctx = c.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, 30, 30);
+    // Table lean in screen terms (the view may be turned a quarter on wide screens).
+    const v = game.renderer.view;
+    const sx = v.rot ? tilt.y : tilt.x, sy = v.rot ? -tilt.x : tilt.y;
+    const m = Math.hypot(sx, sy) || 1;
+    ctx.fillStyle = 'rgba(160,220,140,0.25)';
+    ctx.beginPath(); ctx.arc(15, 15, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(15, 15, 4.5, 0, Math.PI * 2); ctx.stroke();
+    // The bubble floats uphill; the arrow shows which way balls drift.
+    ctx.strokeStyle = '#ff8a80'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(15, 15); ctx.lineTo(15 + (sx / m) * 10, 15 + (sy / m) * 10); ctx.stroke();
+    ctx.fillStyle = '#fff6c0';
+    ctx.beginPath(); ctx.arc(15 - (sx / m) * 6, 15 - (sy / m) * 6, 3.8, 0, Math.PI * 2); ctx.fill();
   }
 
   // Table style screen: cloth, rails, room and guide, with a live preview.
@@ -866,7 +999,7 @@
   els.btnNextTrack.addEventListener('click', () => { audio.unlock(); Pool.music.next(); setQuick(false); });
   els.btnNew.addEventListener('click', () => {
     setQuick(false);
-    if (!game.inGame || game.shots === 0 || confirm('Start a new game? This one will be lost.')) newGame();
+    if (!game.inGame || game.shots === 0 || confirm('Start a new game? This one will be lost.')) showSetup();
   });
   els.btnStyle.addEventListener('click', () => { setQuick(false); showStyle(); });
   els.btnStyleSide.addEventListener('click', () => { audio.unlock(); showStyle(); });
@@ -874,7 +1007,7 @@
   Pool.music.onTrack = (name) => setTimeout(() => { if (Pool.music.enabled && game.inGame) note(`♫ ${name}`, 'music', 3000); }, 2500);
 
   window.addEventListener('keydown', (e) => {
-    if (!els.menu.classList.contains('hidden') || !els.style.classList.contains('hidden')) return;
+    if (!els.menu.classList.contains('hidden') || !els.style.classList.contains('hidden') || !els.setup.classList.contains('hidden')) return;
     if (e.code === 'Space' || e.code === 'Enter') {
       e.preventDefault();
       if (!e.repeat) pressShoot();
@@ -899,7 +1032,12 @@
   document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // Menu wiring.
-  els.play.addEventListener('click', () => { audio.unlock(); clearSave(); newGame(); });
+  els.play.addEventListener('click', () => { audio.unlock(); showSetup(); });
+  els.btnBreak.addEventListener('click', () => { audio.unlock(); clearSave(); newGame(setupSel); });
+  els.btnStandard.addEventListener('click', () => { setupSel = { ...C.STANDARD }; syncSetup(); });
+  els.btnSetupBack.addEventListener('click', () => (game.inGame ? hideOverlays() : showMenu()));
+  els.change.addEventListener('click', showSetup);
+  els.condPanel.addEventListener('click', () => note(C.summary(game.conds), 'info', 4000));
   els.continueBtn.addEventListener('click', () => {
     audio.unlock();
     if (game.inGame) { hideOverlays(); return; }
@@ -957,7 +1095,7 @@
   Pool.game = game;
   // Used by the browser playtests.
   Pool.debug = {
-    newGame, setSpin, setPower, confirmPlace, toggleSpinWindow, showStyle,
+    newGame, showSetup, setSpin, setPower, confirmPlace, toggleSpinWindow, showStyle,
     shoot(angle, power, a = 0, b = 0) {
       if (game.phase === 'place') confirmPlace();
       game.aim = angle;

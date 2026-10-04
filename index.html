@@ -26,6 +26,10 @@
           <div class="big" id="shots-label">Shot 1</div>
           <div class="small" id="fouls-label">No fouls</div>
         </div>
+        <div class="panel hidden" id="cond-panel" title="Table conditions">
+          <canvas id="lean-canvas" class="hidden"></canvas>
+          <div class="small" id="cond-label"></div>
+        </div>
         <div class="panel" id="tray-panel">
           <div class="big" id="left-label">15 left</div>
           <div id="tray"></div>
@@ -137,7 +141,8 @@
             <li><b>Strength:</b> drag the strength bar, then tap <b>SHOOT</b>. What you set is exactly what you get — no timing, no luck.</li>
             <li><b>Spin (optional):</b> tap the little cue ball to open the spin window and drag the pointer to where the tip should strike: high for follow, low for draw, left or right for side. Side spin changes how the ball comes off a cushion.</li>
             <li><b>Guide:</b> the ring is the ghost ball (where the cue ball touches). The object ball's line turns <span class="ok-chip">green</span> when it's heading for a pocket; the blue line is where the cue ball goes after contact. Cut shots throw the object ball slightly, so allow a hair on thin cuts.</li>
-            <li><b>Fouls:</b> potting the cue ball (scratch) or missing every ball adds a foul. After a scratch the cue ball is in hand anywhere. Your score is shots + fouls.</li>
+            <li><b>Table conditions (optional):</b> before the break you can change the cloth speed, cushions, pocket size and gravity, tilt the table (slow balls drift downhill — the spirit level shows which way), throw sand on the cloth, or add a gold lucky pocket (pot into it on a clean shot for −1, then it moves). Each combination keeps its own best score.</li>
+            <li><b>Fouls:</b> potting the cue ball (scratch) or missing every ball adds a foul. After a scratch the cue ball is in hand anywhere. Your score is shots + fouls (− lucky-pocket bonuses).</li>
             <li>Pinch, scroll or 🔍 to zoom. Hold <b>SHOOT</b> while the balls run to fast-forward. 🎨 changes the cloth, rails and room.</li>
             <li>Desktop: mouse to aim, ←/→ fine aim (Shift for bigger steps), ↑/↓ strength, Space or Enter to shoot/place, S spin window, Z zoom, M mute, N next track.</li>
           </ul>
@@ -161,11 +166,26 @@
       </div>
     </div>
 
+    <div id="setup" class="overlay hidden">
+      <div class="card wide">
+        <h2>New game</h2>
+        <p class="small muted">Table conditions are optional and mix freely. Each combination keeps its own best score.</p>
+        <div id="cond-options"></div>
+        <p class="best" id="setup-best"></p>
+        <button class="primary" id="btn-break">Break!</button>
+        <div class="btn-pair">
+          <button class="secondary" id="btn-standard">Standard table</button>
+          <button class="secondary" id="btn-setup-back">Back</button>
+        </div>
+      </div>
+    </div>
+
     <div id="result" class="overlay hidden">
       <div class="card">
         <h2 id="result-title">Table cleared!</h2>
         <div id="result-body"></div>
-        <button class="primary" id="btn-again">New game</button>
+        <button class="primary" id="btn-again">Play again</button>
+        <button class="secondary" id="btn-change">Change conditions</button>
         <button class="secondary" id="btn-result-menu">Main menu</button>
       </div>
     </div>
@@ -173,6 +193,7 @@
 
   <script src="js/util.js"></script>
   <script src="js/themes.js"></script>
+  <script src="js/conditions.js"></script>
   <script src="js/table.js"></script>
   <script src="js/physics.js"></script>
   <script src="js/render.js"></script>

@@ -1,13 +1,14 @@
 // Offline support: cache the whole game on first visit, then serve it from the device.
 // Strategy: stale-while-revalidate — instant (and offline) loads from the cache, with a background
 // refresh whenever the network is available, so updates arrive on the next launch.
-const VERSION = 'pool-v2';
+const VERSION = 'pool-v3';
 const ASSETS = [
   './',
   'index.html',
   'css/style.css',
   'js/util.js',
   'js/themes.js',
+  'js/conditions.js',
   'js/table.js',
   'js/physics.js',
   'js/render.js',

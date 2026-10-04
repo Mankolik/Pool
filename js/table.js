@@ -22,7 +22,7 @@
   // ---- Geometry --------------------------------------------------------------------------------
   // Cushion noses and jaw facings are line segments.  The ball's centre may come no closer than R to
   // any of them, which also makes the jaw points (segment ends) act like real rounded jaws.
-  function buildTable(env) {
+  function buildTable(env, opts = {}) {
     const k = env.pocketK || 1;
     const hw = W / 2, hl = L / 2;
     const c = 0.084 * k; // corner jaw: distance from the corner along each rail
@@ -73,6 +73,17 @@
     }
     return {
       W, L, R, RAIL, CUSHION, hw, hl, HEAD_Y, FOOT_Y, segs, pockets,
+      tilt: opts.tilt || null, sand: opts.sand || [], lucky: opts.lucky ?? -1,
+      // Drag factor of the sand at (x, y): 0 on clean cloth.
+      sandAt(x, y) {
+        for (const p of this.sand) {
+          const dx = x - p.x, dy = y - p.y;
+          const u = (dx * p.c + dy * p.s) / p.rx, v = (-dx * p.s + dy * p.c) / p.ry;
+          const d = u * u + v * v;
+          if (d < 1) return p.k * (1 - d * d);
+        }
+        return 0;
+      },
 
     };
   }

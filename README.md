@@ -23,14 +23,16 @@ Enable GitHub Pages for the `main` branch (Settings → Pages) and the game is l
 **https://mankolik.github.io/Pool/**. To run it locally, serve the folder with any static web server
 (e.g. `npx http-server`).
 
-**Goal:** pot all 15 balls, in any order. Your score is shots + fouls; the best clearance is kept on the menu.
+**Goal:** pot all 15 balls, in any order. Your score is shots + fouls (− lucky-pocket bonuses). The best
+clearance is kept for each combination of table conditions.
 A game in progress is saved, so you can close the app and continue later.
 
 **Controls (touch)**
 - **Ball in hand:** the break starts with the cue ball in hand behind the head string — drag it, then tap
   **PLACE**. After a scratch it's ball in hand anywhere.
 - **Aim:** drag anywhere on the table; ⟲ ⟳ nudge it about 0.05° at a time (hold to repeat).
-- **Strength:** drag the strength bar, then tap **SHOOT**. There's no timing and no randomness — the same aim,
+- **Strength:** drag the strength bar, then tap **SHOOT**. 100% is a hard break (7 m/s, about 25 km/h); half
+  strength is a firm 2.5 m/s shot, and the low end is finely graded for touch shots. There's no timing and no randomness — the same aim,
   strength and spin always play the same shot.
 - **Spin (optional):** tap the little cue ball to open the floating spin window and drag the pointer to where the
   tip should strike: high for follow, low for draw, left/right for side. Drag the window by its header to move it.
@@ -43,6 +45,25 @@ A game in progress is saved, so you can close the app and continue later.
 
 **Desktop:** drag to aim, ←/→ fine aim (Shift for bigger steps), ↑/↓ strength, Space/Enter to place and shoot,
 S spin window, Z zoom, M mute, N next track.
+
+## Table conditions
+
+Before the break, **New game** opens a setup screen. Every condition is optional and independent, and fixed for
+the whole game; **Standard table** resets them all.
+
+| Condition | Options | Effect |
+| --- | --- | --- |
+| 🧶 Cloth speed | Slow / Normal / Fast | Rolling and sliding friction |
+| 🛞 Cushions | Dead / Normal / Lively | How much speed the rails give back |
+| 🕳️ Pockets | Tight / Normal / Generous | Pocket mouth and capture size |
+| 🪐 Gravity | Normal / Low (0.45 g) | All friction scales with gravity: balls slide and roll much further, spin lasts |
+| 📐 Table lean | Level / Leaning | A random slope each game; slow balls drift downhill (5/7·g·slope), resting balls stay put. A spirit level in the HUD shows which way |
+| 🏖️ Sand on the cloth | Clean / Sandy | 3–5 random patches that add drag |
+| ★ Lucky pocket | Off / On | One pocket glows gold; a ball potted there on a clean shot is −1, then the gold moves |
+
+The random parts (lean direction, sand, the first lucky pocket) are drawn once at the start and saved with
+the game, so shots stay deterministic. Each combination keeps its own best score; the menu shows the best on
+the standard table and the best with your last-used conditions.
 
 ## Table style
 
@@ -76,11 +97,12 @@ The style is purely cosmetic: every combination plays exactly the same.
 | --- | --- |
 | `js/util.js` | Seeded RNG, value noise, math helpers |
 | `js/themes.js` | Table style options: cloths, rails, rooms |
+| `js/conditions.js` | Optional table conditions: physics settings, random extras, best-score keys |
 | `js/table.js` | Table geometry (cushions, jaws, pockets), the rack, ball-in-hand placement |
 | `js/physics.js` | Ball and spin physics, collisions, pockets, aim tracing, headless shot simulation |
 | `js/render.js` | Table/room rasteriser, rolling ball shader, cue, guides, spin picker |
 | `js/audio.js` | Synthesised sound effects (WebAudio) |
 | `js/music.js` | Procedural music sequencer, instruments and the 12 room tracks |
-| `js/game.js` | Game flow, strength slider, spin window, input, camera, HUD, saving, style screen |
+| `js/game.js` | Game flow, setup and style screens, strength slider, spin window, input, camera, HUD, saving |
 
 Run the headless checks with `node tests/run.js`.

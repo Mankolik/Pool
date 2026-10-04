@@ -1,6 +1,7 @@
 // Ball physics: sliding and rolling friction with full spin (follow, draw, stun and side), ball–ball
 // collisions with cut- and spin-induced throw, cushions that take and give side spin, pocket jaws and
-// capture.  Deterministic: the same stroke always plays the same way.  Pure functions on plain objects, so it runs headless in tests.
+// capture, and the optional table conditions (lean, sand, gravity).  Deterministic: the same stroke on
+// the same table always plays the same way.  Pure functions on plain objects, so it runs headless in tests.
 //
 // Frame: x right, y down the table, z into the cloth (right-handed).  The contact point with the cloth is
 // r = (0, 0, R); a ball rolls without slipping when vx = −R·wy and vy = R·wx.
@@ -9,7 +10,7 @@
   const { R } = Pool.table;
   const { clamp } = Pool.util;
   const G = 9.81;
-  const MAX_SPEED = 8.6; // m/s, a big break
+  const MAX_SPEED = 7.0; // m/s: a hard amateur break (about 25 km/h)
   const MIN_SPEED = 0.1;
   const BALL_E = 0.94; // ball–ball restitution
   const BALL_MU = 0.04; // ball–ball friction (throw)
@@ -54,8 +55,8 @@
   }
 
   // Cue speed for a power setting (0–1).  Progressive, so soft touch shots get more of the meter.
-  const speedFor = (p) => MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.pow(clamp(p, 0, 1), 1.45);
-  const powerFor = (v) => Math.pow(clamp((v - MIN_SPEED) / (MAX_SPEED - MIN_SPEED), 0, 1), 1 / 1.45);
+  const speedFor = (p) => MIN_SPEED + (MAX_SPEED - MIN_SPEED) * Math.pow(clamp(p, 0, 1), 1.5);
+  const powerFor = (v) => Math.pow(clamp((v - MIN_SPEED) / (MAX_SPEED - MIN_SPEED), 0, 1), 1 / 1.5);
 
   // Strike the cue ball.  a: side (+ = right of centre), b: height (+ = above centre), both in units of R.
   function strike(ball, angle, speed, a, b) {
@@ -96,30 +97,34 @@
     const g = G * (env.gravity ?? 1);
     const slideMu = env.slide, rollMu = env.roll;
     const spinDec = (env.spinDecay ?? 9) * (env.gravity ?? 1);
+    const tilt = table.tilt;
     for (const b of balls) {
       if (b.pocketed || !b.moving) continue;
+      const sandK = table.sand.length ? table.sandAt(b.x, b.y) : 0;
       const ux = b.vx + R * b.wy, uy = b.vy - R * b.wx;
       const slip = Math.hypot(ux, uy);
       if (slip > 1e-4) {
         // Sliding: kinetic friction slows the slip at 7/2·μg until the ball rolls.
-        const a = slideMu * g;
+        const a = slideMu * g * (1 + sandK * 0.3);
         const f = Math.min(1, slip / (3.5 * a * h));
         const fx = (-a * ux) / slip, fy = (-a * uy) / slip;
         b.vx += fx * h * f;
         b.vy += fy * h * f;
         b.wx += ((-5 / (2 * R)) * fy) * h * f;
         b.wy += ((5 / (2 * R)) * fx) * h * f;
+        if (tilt) { b.vx += g * tilt.x * h; b.vy += g * tilt.y * h; }
       } else {
-        // Rolling: rolling resistance.
+        // Rolling: rolling resistance (and a leaning table's pull, 5/7 g·slope for a rolling sphere).
+        if (tilt) { b.vx += (5 / 7) * g * tilt.x * h; b.vy += (5 / 7) * g * tilt.y * h; }
         const sp = Math.hypot(b.vx, b.vy);
-        const dec = rollMu * g * h;
+        const dec = rollMu * g * (1 + sandK) * h;
         if (sp <= dec) { b.vx = 0; b.vy = 0; } else { const k = (sp - dec) / sp; b.vx *= k; b.vy *= k; }
         b.wx = b.vy / R;
         b.wy = -b.vx / R;
       }
       // Spin about the vertical axis decays through the contact patch.
       if (b.wz !== 0) {
-        const d = spinDec * h;
+        const d = spinDec * h * (1 + sandK);
         b.wz = Math.abs(b.wz) <= d ? 0 : b.wz - Math.sign(b.wz) * d;
       }
       b.x += b.vx * h;
@@ -205,7 +210,7 @@
       if (vn >= 0) continue;
       const speed = -vn;
       // Cushions are a little livelier on soft contact.
-      const e = clamp(env.cushionE * (1.06 - 0.05 * Math.min(speed, 4) / 4) * (s.kind === 'jaw' ? 0.85 : 1), 0, 0.95);
+      const e = clamp(env.cushionE * (1.08 - 0.2 * Math.min(speed, 6) / 6) * (s.kind === 'jaw' ? 0.85 : 1), 0, 0.95);
       const Jn = -(1 + e) * vn;
       b.vx += Jn * nx;
       b.vy += Jn * ny;

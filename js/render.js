@@ -280,6 +280,14 @@
       default:
         break;
     }
+    // Sand on the cloth (a table condition).
+    if (table.sand.length) {
+      const s = table.sandAt(x, y);
+      if (s > 0) {
+        const q = clamp(s / 3.2, 0, 1) * 0.8 * (0.45 + 0.55 * hash2((x * 500) | 0, (y * 500) | 0, 2)) * (0.85 + 0.3 * noise.value(x * 40, y * 40));
+        c = [lerp(c[0], 226, q), lerp(c[1], 204, q), lerp(c[2], 150, q)];
+      }
+    }
     if (dark && edge < 0) c = dark;
     return [c[0] * k, c[1] * k, c[2] * k];
   }
@@ -323,6 +331,20 @@
     ctx.beginPath();
     ctx.moveTo(-hw, HEAD_Y); ctx.lineTo(hw, HEAD_Y);
     ctx.stroke();
+    // Sand patch rims.
+    for (const s of table.sand) {
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.a);
+      ctx.fillStyle = 'rgba(240,222,170,0.12)';
+      for (let k = 0; k < 14; k++) {
+        const a = hash2(k, 1, s.x * 1000) * Math.PI * 2, rr = 0.85 + hash2(k, 2, s.y * 1000) * 0.4;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * s.rx * rr, Math.sin(a) * s.ry * rr, 0.004, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
     drawProps(ctx, table, W);
   }
 
@@ -706,6 +728,21 @@
     const s = this.view.s;
     const px = 1 / s;
 
+    // Lucky pocket: a pulsing gold ring.
+    if (table.lucky >= 0) {
+      const p = table.pockets[table.lucky];
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,214,64,${0.55 + pulse * 0.4})`;
+      ctx.lineWidth = 0.006 + pulse * 0.004;
+      ctx.shadowColor = '#ffd640';
+      ctx.shadowBlur = 12 * this.dpr;
+      ctx.beginPath();
+      ctx.arc(p.x + p.sx * 0.02, p.y + (p.sy || 0) * 0.02, p.drawR * 1.25, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      this.text('★', p.x + p.sx * 0.115, p.y + (p.sy || 0) * 0.115 + (p.sy ? 0 : 0), 0.05, '#ffd640');
+    }
     // Ball-in-hand: show where the cue ball may go.
     if (game.phase === 'place' && game.handZone === 'kitchen') {
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
